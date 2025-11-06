@@ -41,6 +41,21 @@ if ($method === 'POST' && $uri === '/logout') {
 	exit;
 }
 
+// Login form (simple HTML)
+if ($method === 'GET' && $uri === '/login') {
+	header('Content-Type: text/html; charset=utf-8');
+	echo '<!doctype html><html><head><meta charset="utf-8"><title>Login</title></head><body>';
+	echo '<h1>Login</h1>';
+	echo '<form method="post" action="/login">';
+	echo '<label>Username or Email: <input name="username" required></label><br>';
+	echo '<label>Password: <input name="password" type="password" required></label><br>';
+	echo '<button type="submit">Login</button>';
+	echo '</form>';
+	echo '<p><a href="/register">Create an account</a></p>';
+	echo '</body></html>';
+	exit;
+}
+
 // Registration form (simple HTML) and endpoint
 if ($method === 'GET' && $uri === '/register') {
 	header('Content-Type: text/html; charset=utf-8');
@@ -52,7 +67,9 @@ if ($method === 'GET' && $uri === '/register') {
 	echo '<label>Password: <input name="password" type="password" required></label><br>'; 
 	echo '<label>Two-factor: <select name="two_factor_method"><option value="none">None</option><option value="email">Email</option><option value="totp">Authenticator (Google Authenticator)</option></select></label><br>'; 
 	echo '<button type="submit">Register</button>';
-	echo '</form></body></html>';
+	echo '</form>';
+	echo '<p><a href="/login">Already have an account? Login</a></p>';
+	echo '</body></html>';
 	exit;
 }
 
