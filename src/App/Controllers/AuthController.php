@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\AuthService;
 use Exception;
+use App\Services\TotpService;
 
 class AuthController
 {
@@ -58,18 +59,47 @@ class AuthController
                 ];
             }
 
-            // Generate 2FA token and send code via email
-            $twoFactorToken = $this->authService->createTwoFactorToken($userData);
+            // Branch by user's 2FA preference
+            $method = $userData->getTwoFactorMethod();
+            if ($method === 'none') {
+                // Create session and return success
+                $sessionId = $this->authService->createSession($userData);
+                $this->setSecureCookie('session_id', $sessionId);
+                return [
+                    'success' => true,
+                    'message' => 'Authentication successful',
+                    'user' => $userData->toArray()
+                ];
+            }
 
-            // Set a short-lived cookie to keep token on client (also returned in payload)
-            $this->setSecureCookie('two_factor_token', $twoFactorToken, time() + 600);
+            if ($method === 'email') {
+                // Generate 2FA token and send code via email
+                $twoFactorToken = $this->authService->createTwoFactorToken($userData);
 
-            return [
-                'success' => false,
-                'two_factor_required' => true,
-                'message' => 'A verification code was sent to your email',
-                'two_factor_token' => $twoFactorToken
-            ];
+                // Set a short-lived cookie to keep token on client (also returned in payload)
+                $this->setSecureCookie('two_factor_token', $twoFactorToken, time() + 600);
+
+                return [
+                    'success' => false,
+                    'two_factor_required' => true,
+                    'two_factor_method' => 'email',
+                    'message' => 'A verification code was sent to your email',
+                    'two_factor_token' => $twoFactorToken
+                ];
+            }
+
+            if ($method === 'totp') {
+                // Require user to provide TOTP code from their authenticator
+                return [
+                    'success' => false,
+                    'two_factor_required' => true,
+                    'two_factor_method' => 'totp',
+                    'message' => 'Enter the code from your authenticator app.'
+                ];
+            }
+
+            // Fallback
+            return ['success' => false, 'message' => 'Unsupported two-factor configuration'];
 
         } catch (Exception $e) {
             // Log the error (implement your logging system)
@@ -178,6 +208,49 @@ class AuthController
         } catch (Exception $e) {
             error_log('2FA verification error: ' . $e->getMessage());
             return ['success' => false, 'message' => 'An error occurred during verification'];
+        }
+    }
+
+    /**
+     * Register a new user with optional 2FA preference.
+     * Returns array with success and (for TOTP) provisioning data.
+     */
+    public function register(string $username, string $email, string $password, string $twoFactorMethod = 'none'): array
+    {
+        try {
+            // Basic validation
+            if (empty($username) || empty($email) || empty($password)) {
+                return ['success' => false, 'message' => 'Username, email and password are required'];
+            }
+
+            $username = filter_var($username, FILTER_SANITIZE_STRING);
+            $email = filter_var($email, FILTER_VALIDATE_EMAIL);
+            if ($email === false) {
+                return ['success' => false, 'message' => 'Invalid email'];
+            }
+
+            $twoFactorMethod = in_array($twoFactorMethod, ['none', 'email', 'totp']) ? $twoFactorMethod : 'none';
+
+            $totpSecret = null;
+            $provision = null;
+            if ($twoFactorMethod === 'totp') {
+                $totp = new TotpService();
+                $totpSecret = $totp->generateSecret();
+                $provision = $totp->getProvisioningUri($username, $totpSecret, $_ENV['APP_NAME'] ?? 'Admira');
+            }
+
+            $user = $this->authService->registerUser($username, $email, $password, $twoFactorMethod, $totpSecret);
+
+            $response = ['success' => true, 'message' => 'User registered', 'user' => $user->toArray()];
+            if ($twoFactorMethod === 'totp') {
+                $response['totp_provisioning_uri'] = $provision;
+                $response['totp_secret'] = $totpSecret; // consider not returning secret in production; return only provisioning URI or QR
+            }
+
+            return $response;
+        } catch (\Exception $e) {
+            error_log('Registration error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

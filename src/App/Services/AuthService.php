@@ -53,6 +53,37 @@ class AuthService
     }
 
     /**
+     * Register a new user. Returns the created User on success or throws exception on failure.
+     */
+    public function registerUser(string $username, string $email, string $password, string $twoFactorMethod = 'none', ?string $totpSecret = null): User
+    {
+        // Basic checks
+        $check = $this->db->prepare("SELECT id FROM users WHERE username = :username OR email = :email LIMIT 1");
+        $check->execute(['username' => $username, 'email' => $email]);
+        if ($check->fetch()) {
+            throw new \RuntimeException('User with that username or email already exists');
+        }
+
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+
+        $stmt = $this->db->prepare("INSERT INTO users (username, email, password, two_factor_method, totp_secret, created_at, updated_at) VALUES (:username, :email, :password, :two_factor_method, :totp_secret, NOW(), NOW())");
+        $stmt->execute([
+            'username' => $username,
+            'email' => $email,
+            'password' => $passwordHash,
+            'two_factor_method' => $twoFactorMethod,
+            'totp_secret' => $totpSecret
+        ]);
+
+        $id = (int)$this->db->lastInsertId();
+
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $id]);
+        $userData = $stmt->fetch(PDO::FETCH_ASSOC);
+        return new User($userData ?: []);
+    }
+
+    /**
      * Invalidate a session by its id
      */
     public function invalidateSession(string $sessionId): void
