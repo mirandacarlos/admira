@@ -20,9 +20,9 @@ class AuthService
     {
         try {
             $this->db = new PDO(
-                "mysql:host=" . $_ENV['DB_HOST'] . ";dbname=" . $_ENV['DB_NAME'],
-                $_ENV['DB_USER'],
-                $_ENV['DB_PASS']
+                "mysql:host=" . $_ENV['MYSQL_HOST'] . ";dbname=" . $_ENV['MYSQL_DATABASE'],
+                $_ENV['MYSQL_USER'],
+                $_ENV['MYSQL_PASSWORD']
             );
             $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         } catch (PDOException $e) {
@@ -95,20 +95,47 @@ class AuthService
     }
 
     /**
-     * Verify a two-factor token and code. Returns the User on success, null otherwise.
+     * Verify a two-factor token and code.
+     * Returns an array with 'status' => 'ok'|'invalid'|'locked' and 'user' on success.
      */
-    public function verifyTwoFactorToken(string $token, string $code): ?User
+    public function verifyTwoFactorToken(string $token, string $code): array
     {
+        $MAX_ATTEMPTS = 5;
+
         $stmt = $this->db->prepare("SELECT * FROM two_factor_codes WHERE token = :token AND expires_at > NOW() LIMIT 1");
         $stmt->execute(['token' => $token]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$row) {
-            return null;
+            return ['status' => 'invalid', 'user' => null];
         }
 
+        // If attempts already exceed limit, invalidate and return locked
+        if ((int)($row['attempts'] ?? 0) >= $MAX_ATTEMPTS) {
+            $del = $this->db->prepare("DELETE FROM two_factor_codes WHERE id = :id");
+            $del->execute(['id' => $row['id']]);
+            return ['status' => 'locked', 'user' => null];
+        }
+
+        // Verify provided code
         if (!password_verify((string)$code, $row['code_hash'])) {
-            return null;
+            // Increment attempts
+            $upd = $this->db->prepare("UPDATE two_factor_codes SET attempts = attempts + 1 WHERE id = :id");
+            $upd->execute(['id' => $row['id']]);
+
+            // Check attempts after increment
+            $check = $this->db->prepare("SELECT attempts FROM two_factor_codes WHERE id = :id");
+            $check->execute(['id' => $row['id']]);
+            $attempts = (int)$check->fetchColumn();
+
+            if ($attempts >= $MAX_ATTEMPTS) {
+                // Invalidate token after too many failed attempts
+                $del = $this->db->prepare("DELETE FROM two_factor_codes WHERE id = :id");
+                $del->execute(['id' => $row['id']]);
+                return ['status' => 'locked', 'user' => null];
+            }
+
+            return ['status' => 'invalid', 'user' => null];
         }
 
         // Fetch user
@@ -120,7 +147,7 @@ class AuthService
         $del = $this->db->prepare("DELETE FROM two_factor_codes WHERE id = :id");
         $del->execute(['id' => $row['id']]);
 
-        return $userData ? new User($userData) : null;
+        return ['status' => 'ok', 'user' => ($userData ? new User($userData) : null)];
     }
 
     public function createSession(User $user): string

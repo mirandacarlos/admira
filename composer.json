@@ -1,0 +1,18 @@
+{
+    "name": "admira/test",
+    "description": "sistema de login con posibilidad de 2 factores",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/App/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Carlos Miranda"
+        }
+    ],
+    "require": {
+        "phpmailer/phpmailer": "^6.8",
+        "vlucas/phpdotenv": "^5.6"
+    }
+}

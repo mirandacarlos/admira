@@ -25,6 +25,7 @@ CREATE TABLE two_factor_codes (
     user_id INT NOT NULL,
     token VARCHAR(64) NOT NULL UNIQUE,
     code_hash VARCHAR(255) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

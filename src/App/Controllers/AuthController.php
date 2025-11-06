@@ -146,11 +146,21 @@ class AuthController
                 return ['success' => false, 'message' => 'Token and code are required'];
             }
 
-            $user = $this->authService->verifyTwoFactorToken($token, $code);
+            $result = $this->authService->verifyTwoFactorToken($token, $code);
 
-            if (!$user) {
+            if (!isset($result['status'])) {
+                return ['success' => false, 'message' => 'Invalid response from verification'];
+            }
+
+            if ($result['status'] === 'locked') {
+                return ['success' => false, 'message' => 'Too many failed attempts. The verification token has been invalidated.'];
+            }
+
+            if ($result['status'] !== 'ok' || !($result['user'] ?? null)) {
                 return ['success' => false, 'message' => 'Invalid or expired verification code'];
             }
+
+            $user = $result['user'];
 
             // Create session and set session cookie
             $sessionId = $this->authService->createSession($user);
