@@ -1,4 +1,8 @@
-FROM php:8.4-apache
+FROM php:8.2-apache
+
+# Habilitar módulos de Apache necesarios primero
+RUN a2enmod rewrite
+RUN a2enmod headers
 
 # Instalar dependencias y extensiones
 RUN apt-get update && apt-get install -y \
