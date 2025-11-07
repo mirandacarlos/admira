@@ -100,7 +100,7 @@ Logout:
 Invoke-RestMethod -Uri http://127.0.0.1:8080/logout -Method POST
 ```
 
-Detalles de 2FA (contenido integrado de `README-2FA.md`)
+Detalles de 2FA
 
 El proyecto implementa dos modos de 2FA:
 
