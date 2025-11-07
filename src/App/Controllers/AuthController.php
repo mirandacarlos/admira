@@ -282,4 +282,71 @@ class AuthController
             ];
         }
     }
+
+    /**
+     * Get the currently authenticated user from session cookie.
+     */
+    private function getCurrentUser()
+    {
+        $sessionId = $_COOKIE['session_id'] ?? '';
+        if (empty($sessionId)) return null;
+
+        return $this->authService->validateSession($sessionId);
+    }
+
+    /**
+     * Return data for two-factor settings page
+     */
+    public function getTwoFactorSettings(): array
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            return ['success' => false, 'message' => 'Not authenticated'];
+        }
+
+        $data = ['success' => true, 'user' => $user->toArray()];
+
+        if ($user->getTwoFactorMethod() === 'totp' && $user->getTotpSecret()) {
+            $totp = new TotpService();
+            $provision = $totp->getProvisioningUri($user->getUsername(), $user->getTotpSecret(), $_ENV['APP_NAME'] ?? 'Admira');
+            $data['totp_provisioning_uri'] = $provision;
+            $data['totp_secret'] = $user->getTotpSecret();
+        }
+
+        return $data;
+    }
+
+    /**
+     * Update two-factor configuration for current user.
+     * Returns array with success and provisioning data if TOTP enabled.
+     */
+    public function updateTwoFactorSettings(string $method): array
+    {
+        $user = $this->getCurrentUser();
+        if (!$user) {
+            return ['success' => false, 'message' => 'Not authenticated'];
+        }
+
+        $method = in_array($method, ['none', 'email', 'totp']) ? $method : 'none';
+
+        $provision = null;
+        $totpSecret = null;
+
+        if ($method === 'totp') {
+            $totp = new TotpService();
+            $totpSecret = $totp->generateSecret();
+            $provision = $totp->getProvisioningUri($user->getUsername(), $totpSecret, $_ENV['APP_NAME'] ?? 'Admira');
+        }
+
+        // Update in DB (clears totp_secret when not TOTP)
+        $updatedUser = $this->authService->updateTwoFactorSettings($user->getId(), $method, $totpSecret);
+
+        $response = ['success' => true, 'message' => 'Two-factor settings updated', 'user' => $updatedUser->toArray()];
+        if ($method === 'totp') {
+            $response['totp_provisioning_uri'] = $provision;
+            $response['totp_secret'] = $totpSecret;
+        }
+
+        return $response;
+    }
 }

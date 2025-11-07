@@ -215,4 +215,27 @@ class AuthService
 
         return $userData ? new User($userData) : null;
     }
+
+    /**
+     * Update a user's two-factor settings.
+     * If $twoFactorMethod is 'totp' a $totpSecret should be provided (or set by caller).
+     * Returns the updated User object.
+     */
+    public function updateTwoFactorSettings(int $userId, string $twoFactorMethod, ?string $totpSecret = null): User
+    {
+        $twoFactorMethod = in_array($twoFactorMethod, ['none', 'email', 'totp']) ? $twoFactorMethod : 'none';
+
+        $stmt = $this->db->prepare("UPDATE users SET two_factor_method = :m, totp_secret = :s, updated_at = NOW() WHERE id = :id");
+        $stmt->execute([
+            'm' => $twoFactorMethod,
+            's' => $totpSecret,
+            'id' => $userId
+        ]);
+
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $userId]);
+        $userData = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return new User($userData ?: []);
+    }
 }
